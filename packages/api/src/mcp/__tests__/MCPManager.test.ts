@@ -5248,6 +5248,36 @@ describe('MCPManager', () => {
       );
     });
 
+    it('validates a direct OpenID bearer binding while the snapshot token is stale', async () => {
+      const config = {
+        source: 'yaml',
+        type: 'sse',
+        url: 'https://example.com/mcp',
+        headers: { Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}' },
+      } as t.ParsedServerConfig;
+      /** As the real resolver does when the request snapshot's access token has expired. */
+      mockProcessMCPEnv.mockImplementation((params) => {
+        if ('headers' in params.options) {
+          throw new OpenIDReauthRequiredError('OpenID token is expired or unavailable');
+        }
+        return params.options;
+      });
+      const manager = await createAppManager(newMCPServersConfig());
+
+      await expect(manager.validateAppBinding(context('srv', config))).resolves.toEqual({
+        valid: true,
+      });
+      /** The App operations that follow still get the placeholder they refresh. */
+      expect('headers' in config).toBe(true);
+      expect(appBindingCodec.verify).toHaveBeenLastCalledWith(
+        'binding',
+        expect.objectContaining({
+          userId: user.id,
+          runtimeTarget: { type: 'sse', url: 'https://example.com/mcp' },
+        }),
+      );
+    });
+
     it('uses the normal checkout path for an existing standard OAuth connection', async () => {
       const config = {
         source: 'yaml',

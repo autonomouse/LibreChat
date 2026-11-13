@@ -49,17 +49,18 @@ import {
   ScheduledMCPBearerError,
 } from '~/schedules/bearer';
 import {
-  MCPAuthenticationRejectedError,
-  isMCPTransportAuthenticationError,
-  isMCPInitializationError,
-  createScheduledMCPTransportError,
-} from './errors';
-import {
+  buildMCPAppBindingConfig,
   projectMCPAppRuntimeTarget,
   type MCPAppBindingCodec,
   type MCPAppBindingSubject,
   type MCPAppRuntimeTarget,
 } from './apps/binding';
+import {
+  MCPAuthenticationRejectedError,
+  isMCPTransportAuthenticationError,
+  isMCPInitializationError,
+  createScheduledMCPTransportError,
+} from './errors';
 import { getMCPAppToolsPublicationGeneration, getMCPToolsChangedGeneration } from './toolsChanged';
 import { mcpOptionsContainGraphTokenPlaceholder, preProcessGraphTokens } from '~/utils/graph';
 import { resolveDirectOpenIDBearerConfig, usesDirectOpenIDBearerRecovery } from './openid';
@@ -2649,10 +2650,11 @@ Please follow these instructions when using tools from the respective MCP server
   async validateAppBinding(context: MCPAppValidationContext): Promise<{ valid: true }> {
     context.signal?.throwIfAborted();
     const config = this.getAppServerConfig(context);
+    /** Only the routing identity is compared, so resolve no credential the binding never reads. */
     const currentOptions = processMCPEnv({
       user: context.user,
       dbSourced: isUserSourced(config),
-      options: config,
+      options: buildMCPAppBindingConfig(config),
       customUserVars: context.customUserVars,
     });
     const valid = this.appBindingCodec?.verify(context.serverBinding, {
