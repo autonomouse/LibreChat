@@ -1,5 +1,6 @@
 import React from 'react';
 import copy from 'copy-to-clipboard';
+import { TOOL_ERROR_RETRY_HINT } from 'librechat-data-provider';
 import { ToolContentPendingContext } from '@librechat/chat/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import OutputRenderer, { isError } from '../OutputRenderer';
@@ -166,6 +167,9 @@ describe('OutputRenderer', () => {
         'Error: Tool "slow_echo" input failed schema validation. Missing required fields: text.' +
           "Use this tool's declared arguments.\n Please fix your mistakes.",
       ),
+    ).toBe(true);
+    expect(
+      isError(`Error: Tool "slow_echo" input failed schema validation.\n ${TOOL_ERROR_RETRY_HINT}`),
     ).toBe(true);
     expect(isError('Error: something went wrong, then it recovered')).toBe(false);
   });

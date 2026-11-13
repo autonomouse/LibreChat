@@ -307,7 +307,7 @@ export function createClientToolRunStepHandler({
  *
  * Returned as a successful tool result rather than an error: the call did not
  * execute, but nothing failed, and `status: 'error'` would reach the model
- * wrapped in the SDK's `Error: … Please fix your mistakes.` framing and count
+ * wrapped in the SDK's `Error: …` framing, closed by its retry hint, and count
  * as a tool failure. The wording asks for the one shape that can hand off.
  */
 export function clientToolDeferralContent(name: string): string {
