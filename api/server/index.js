@@ -46,6 +46,9 @@ const {
   maybeInjectQueryDevtoolsBootstrap,
   injectConfiguredFooterBootstrap,
   injectColorModeHandoff,
+  injectAppMetadata,
+  APP_MANIFEST_FILE,
+  createAppManifestHandler,
   readBundledThemeBoot,
   createDeploymentThemeShell,
   preAuthTenantMiddleware,
@@ -330,6 +333,13 @@ const startServer = async () => {
     }
   }
 
+  const appMetadata = {
+    title: process.env.APP_TITLE,
+    description: process.env.APP_DESCRIPTION,
+  };
+  indexHTML = injectAppMetadata(indexHTML, appMetadata);
+  const sendAppManifest = createAppManifestHandler(appConfig.paths.dist, appMetadata);
+
   /* The composer lays out against whether a footer bar sits beneath it, and
      `/api/config` answers that only after it has painted. One shell serves every
      request, before there is a caller whose overrides could be resolved, so the
@@ -417,6 +427,7 @@ const startServer = async () => {
   }
 
   app.get('/index.html', sendIndexHtml);
+  app.get(`/${APP_MANIFEST_FILE}`, sendAppManifest);
   app.use(staticCache(appConfig.paths.dist));
   app.use(staticCache(appConfig.paths.fonts));
   app.use(staticCache(appConfig.paths.assets));
