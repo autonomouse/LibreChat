@@ -299,6 +299,13 @@ describe('Server Configuration', () => {
     /* This deployment configures a footer, so the shell it serves has to say so
        before any `/api/config` request: the composer lays out against it. */
     process.env.CUSTOM_FOOTER = 'Operator policy footer';
+    /* Link previews and installed web apps read the raw shell and manifest, never `/api/config`. */
+    process.env.APP_TITLE = 'Acme <Chat>';
+    process.env.APP_DESCRIPTION = 'Ask Acme';
+    fs.writeFileSync(
+      path.join('/tmp/dist', 'manifest.webmanifest'),
+      JSON.stringify({ name: 'LibreChat', short_name: 'LibreChat', display: 'standalone' }),
+    );
     /* index.js listens at module scope and exports only the app, so capture the server to close it. */
     const listenSpy = jest.spyOn(express.application, 'listen');
     app = require('~/server');
@@ -316,6 +323,8 @@ describe('Server Configuration', () => {
     await mongoServer?.stop();
     await mongoose.disconnect();
     delete process.env.CUSTOM_FOOTER;
+    delete process.env.APP_TITLE;
+    delete process.env.APP_DESCRIPTION;
   });
 
   it('should return OK for /health', async () => {
@@ -401,6 +410,21 @@ describe('Server Configuration', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.location).toMatch(/\/login\?redirect=false&error=auth_failed$/);
+  });
+
+  it('should serve the configured title in the shell and the web-app manifest', async () => {
+    const shell = await request(app).get('/');
+    const manifest = await request(app).get('/manifest.webmanifest');
+
+    expect(shell.text).toContain('<title>Acme &lt;Chat&gt;</title>');
+    expect(manifest.status).toBe(200);
+    expect(manifest.headers['content-type']).toContain('application/manifest+json');
+    expect(JSON.parse(manifest.text)).toEqual({
+      name: 'Acme <Chat>',
+      short_name: 'Acme <Chat>',
+      display: 'standalone',
+      description: 'Ask Acme',
+    });
   });
 
   it('should gate React Query Devtools config in SPA HTML by debug header', async () => {
