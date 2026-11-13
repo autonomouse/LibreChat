@@ -2,9 +2,12 @@ import React from 'react';
 import { Tools } from 'librechat-data-provider';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { TAttachment, TStartupConfig, UIResource } from 'librechat-data-provider';
+import type { MessagesViewContextValue } from '~/Providers/MessagesViewContext';
 import type { MCPAppFrameState } from '~/hooks/MCP';
 import { MCPAppsPolicyProvider } from '~/Providers/MCPAppsPolicyContext';
 import { MCPAppSuppressionContext, MCPAppViews } from '../MCPAppViews';
+import { MessagesViewContext } from '~/Providers/MessagesViewContext';
+import { MessageContext } from '~/Providers/MessageContext';
 import { useAppBridge } from '~/hooks/MCP/useAppBridge';
 import { useMCPAppFrame } from '~/hooks/MCP';
 
@@ -437,5 +440,108 @@ describe('MCPAppViews', () => {
 
     expect(container).toHaveStyle({ height: `${height}px` });
     expect(container?.style.minHeight).toBe('');
+  });
+
+  describe('auto-open (mcpSettings.appAutoOpen)', () => {
+    const autoOpenConfig = {
+      mcpApps: { enabled: true, legacyHtmlEnabled: true, autoOpenServers: ['demo'] },
+    } as TStartupConfig;
+    const live = { messageId: 'm1', isExpanded: true, isSubmitting: true, isLatestMessage: true };
+    const saved = { messageId: 'm1', isExpanded: true, isSubmitting: false, isLatestMessage: true };
+    const one = (overrides: Partial<UIResource> = {}) => [
+      attachment({ toolCallId: 'auto', agentId: 'agent', stepId: 'step' }, [app(overrides)]),
+    ];
+    /** Without a messages view the host counts as read-only, where nothing opens unasked. */
+    const writable = { readOnly: false } as MessagesViewContextValue;
+    const readOnly = { readOnly: true } as MessagesViewContextValue;
+    const tree = (
+      message: typeof live,
+      attachments: TAttachment[],
+      config: TStartupConfig = autoOpenConfig,
+      messagesView: MessagesViewContextValue = writable,
+    ) => (
+      <MCPAppsPolicyProvider startupConfig={config} ready userId="user-1">
+        <MessagesViewContext.Provider value={messagesView}>
+          <MessageContext.Provider value={message}>
+            <MCPAppViews attachments={attachments} />
+          </MessageContext.Provider>
+        </MessagesViewContext.Provider>
+      </MCPAppsPolicyProvider>
+    );
+
+    it("opens a listed server's View as its result arrives, without taking focus", async () => {
+      const view = render(tree(live, one()));
+
+      expect(await view.findByTitle('MCP App: show_app')).toBeInTheDocument();
+      expect(view.getByRole('button', { name: /com_ui_mcp_app_close_named/ })).not.toHaveFocus();
+    });
+
+    it('keeps the Open control for a saved conversation and for an unlisted server', () => {
+      const savedView = render(tree(saved, one()));
+      expect(savedView.getByRole('button', { name: /com_ui_mcp_app_open_named/ })).toBeVisible();
+      savedView.unmount();
+
+      const unlisted = render(tree(live, one({ serverName: 'other' })));
+      expect(unlisted.getByRole('button', { name: /com_ui_mcp_app_open_named/ })).toBeVisible();
+      unlisted.unmount();
+
+      const unset = render(tree(live, one(), enabledConfig));
+      expect(unset.getByRole('button', { name: /com_ui_mcp_app_open_named/ })).toBeVisible();
+      unset.unmount();
+
+      const shared = render(tree(live, one(), autoOpenConfig, readOnly));
+      expect(shared.getByRole('button', { name: /com_ui_mcp_app_open_named/ })).toBeVisible();
+    });
+
+    it('stays closed once the user closes it, across re-renders', async () => {
+      const attachments = one();
+      const view = render(tree(live, attachments));
+      await view.findByTitle('MCP App: show_app');
+
+      fireEvent.click(view.getByRole('button', { name: /com_ui_mcp_app_close_named/ }));
+      view.rerender(tree(live, attachments));
+
+      expect(view.queryByTitle('MCP App: show_app')).not.toBeInTheDocument();
+      expect(view.getByRole('button', { name: /com_ui_mcp_app_open_named/ })).toBeVisible();
+    });
+
+    it('reopens after its message remounts once the response has ended', async () => {
+      const attachments = one();
+      const remount = (message: typeof live, rowKey: string) => (
+        <MCPAppsPolicyProvider startupConfig={autoOpenConfig} ready userId="user-1">
+          <MessagesViewContext.Provider value={writable}>
+            <MessageContext.Provider key={rowKey} value={message}>
+              <MCPAppViews attachments={attachments} />
+            </MessageContext.Provider>
+          </MessagesViewContext.Provider>
+        </MCPAppsPolicyProvider>
+      );
+      const view = render(remount(live, 'streaming'));
+      await view.findByTitle('MCP App: show_app');
+
+      view.rerender(remount(saved, 'final'));
+
+      expect(await view.findByTitle('MCP App: show_app')).toBeInTheDocument();
+    });
+
+    it('leaves a View closed, with no capacity alert, when the host is full', async () => {
+      const full = {
+        mcpApps: { ...autoOpenConfig.mcpApps, maxActiveViews: 1 },
+      } as TStartupConfig;
+      const attachments = [
+        attachment({ toolCallId: 'first', agentId: 'agent', stepId: 'step' }, [
+          app({ toolName: 'first' }),
+        ]),
+        attachment({ toolCallId: 'second', agentId: 'agent', stepId: 'step' }, [
+          app({ toolName: 'second' }),
+        ]),
+      ];
+      const view = render(tree(live, attachments, full));
+
+      expect(await view.findByTitle('MCP App: first')).toBeInTheDocument();
+      expect(view.queryByTitle('MCP App: second')).not.toBeInTheDocument();
+      expect(view.getByRole('button', { name: /com_ui_mcp_app_open_named second/ })).toBeVisible();
+      expect(view.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 });

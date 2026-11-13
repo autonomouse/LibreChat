@@ -20,9 +20,42 @@ function validLimit(value: unknown, fallback: number, max: number): number {
     : fallback;
 }
 
+/** Enough for any one conversation's Apps; older entries only lose their reopen on remount. */
+const MAX_REMEMBERED_AUTO_OPENED_VIEWS = 256;
+
+/**
+ * Views that opened on arrival and that the user has not closed, by resource key. A message
+ * can remount while or after it streams (its id and row change), which drops a View's own
+ * state; this is what lets the remounted View open again instead of falling back to its
+ * placeholder.
+ */
+type AutoOpenedViews = {
+  has: (resourceKey: string) => boolean;
+  remember: (resourceKey: string) => void;
+  forget: (resourceKey: string) => void;
+};
+
+function createAutoOpenedViews(): AutoOpenedViews {
+  const keys = new Set<string>();
+  return {
+    has: (resourceKey) => keys.has(resourceKey),
+    remember: (resourceKey) => {
+      keys.delete(resourceKey);
+      keys.add(resourceKey);
+      if (keys.size > MAX_REMEMBERED_AUTO_OPENED_VIEWS) {
+        keys.delete(keys.values().next().value as string);
+      }
+    },
+    forget: (resourceKey) => {
+      keys.delete(resourceKey);
+    },
+  };
+}
+
 type MCPAppsHostContextValue = {
   reserveView: (key: string) => boolean;
   releaseView: (key: string) => void;
+  autoOpenedViews: AutoOpenedViews;
   activeViewStore: ReturnType<typeof createStore>;
   policy: Readonly<TMCPAppsPolicy>;
   userId?: string;
@@ -31,6 +64,7 @@ type MCPAppsHostContextValue = {
 const DEFAULT_MCP_APPS_HOST: MCPAppsHostContextValue = {
   reserveView: () => false,
   releaseView: () => undefined,
+  autoOpenedViews: createAutoOpenedViews(),
   activeViewStore: createStore(),
   policy: DEFAULT_MCP_APPS_POLICY,
 };
@@ -62,6 +96,9 @@ function getPublishedPolicy(
       DEFAULT_MCP_APP_ACTION_PREVIEW_CHARS,
       MAX_MCP_APP_ACTION_PREVIEW_CHARS,
     ),
+    autoOpenServers: Array.isArray(policy.autoOpenServers)
+      ? policy.autoOpenServers.filter((name) => typeof name === 'string')
+      : undefined,
   };
 }
 
@@ -78,6 +115,7 @@ export function MCPAppsPolicyProvider({
 }) {
   const policy = useMemo(() => getPublishedPolicy(startupConfig, ready), [ready, startupConfig]);
   const activeViewStore = useMemo(() => createStore(), []);
+  const autoOpenedViews = useMemo(() => createAutoOpenedViews(), []);
   const reserveView = useCallback(
     (key: string) => {
       const active = activeViewStore.get(activeAppViewsAtom);
@@ -101,8 +139,15 @@ export function MCPAppsPolicyProvider({
   );
   const authenticatedUserId = typeof userId === 'string' && userId.trim() ? userId : undefined;
   const value = useMemo(
-    () => ({ policy, userId: authenticatedUserId, reserveView, releaseView, activeViewStore }),
-    [authenticatedUserId, policy, reserveView, releaseView, activeViewStore],
+    () => ({
+      policy,
+      userId: authenticatedUserId,
+      reserveView,
+      releaseView,
+      autoOpenedViews,
+      activeViewStore,
+    }),
+    [authenticatedUserId, policy, reserveView, releaseView, autoOpenedViews, activeViewStore],
   );
 
   return <MCPAppsPolicyContext.Provider value={value}>{children}</MCPAppsPolicyContext.Provider>;
