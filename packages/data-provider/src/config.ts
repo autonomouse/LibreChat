@@ -3830,6 +3830,8 @@ export type TMCPAppsPolicy = {
   operationLimits?: TMCPAppOperationLimits;
   /** Deployment-owned dedicated Sandbox Proxy URL published to authenticated clients. */
   sandboxUrl?: string;
+  /** `librechat.yaml` servers whose Views open as their result arrives (`mcpSettings.appAutoOpen`). */
+  autoOpenServers?: string[];
 };
 
 /** Aggregate App-bearing message target; cannot exceed the safe storage ceiling. */
@@ -3840,6 +3842,7 @@ export const MAX_MCP_APP_PERSISTED_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MCP_APP_ADMISSION_REQUESTS_PER_MINUTE = 240;
 export const DEFAULT_MCP_APP_MAX_ACTIVE_VIEWS = 3;
 export const MAX_MCP_APP_ACTIVE_VIEWS = 32;
+export const MAX_MCP_APP_AUTO_OPEN_SERVERS = 64;
 export const DEFAULT_MCP_APP_ACTION_PREVIEW_CHARS = 16_384;
 export const MAX_MCP_APP_ACTION_PREVIEW_CHARS = 131_072;
 
@@ -3861,6 +3864,7 @@ export function resolveMCPAppsPolicy(
   maxActiveViews = DEFAULT_MCP_APP_MAX_ACTIVE_VIEWS,
   maxActionPreviewChars = DEFAULT_MCP_APP_ACTION_PREVIEW_CHARS,
   operationLimits?: Partial<TMCPAppOperationLimits>,
+  autoOpenServers?: string[],
 ): TMCPAppsPolicy {
   return {
     enabled: value === true,
@@ -3874,7 +3878,25 @@ export function resolveMCPAppsPolicy(
       ? { operationLimits: resolveMCPAppOperationLimits(operationLimits) }
       : {}),
     ...(sandboxUrl !== undefined ? { sandboxUrl } : {}),
+    ...(autoOpenServers != null && autoOpenServers.length > 0 ? { autoOpenServers } : {}),
   };
+}
+
+/**
+ * The servers of `mcpSettings.appAutoOpen.allow` that `librechat.yaml` itself defines.
+ * A name the deployment does not configure never qualifies, so a server a user adds
+ * cannot opt its own Views into opening unasked.
+ */
+export function resolveMCPAppAutoOpenServers(
+  allow?: readonly string[],
+  configuredServers?: Readonly<Record<string, unknown>>,
+): string[] {
+  if (allow == null || configuredServers == null) {
+    return [];
+  }
+  return [...new Set(allow)].filter((name) =>
+    Object.prototype.hasOwnProperty.call(configuredServers, name),
+  );
 }
 
 export const CONVERSATION_TITLE_OWNERSHIP_VERSION = 1 as const;
@@ -4902,6 +4924,13 @@ export const configSchema = z.object({
         })
         .prefault({}),
       apps: z.boolean().optional(),
+      /** `librechat.yaml` servers whose MCP App Views open as their tool result arrives,
+       * without the Open control. Views in a reopened conversation still wait for it. */
+      appAutoOpen: z
+        .object({
+          allow: z.array(z.string().min(1)).max(MAX_MCP_APP_AUTO_OPEN_SERVERS).default([]),
+        })
+        .optional(),
     })
     .optional(),
   interface: interfaceSchema,

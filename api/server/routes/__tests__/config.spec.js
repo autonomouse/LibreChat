@@ -543,6 +543,18 @@ describe('GET /api/config', () => {
       });
     });
 
+    it('publishes auto-open servers only when librechat.yaml defines them', async () => {
+      mockGetAppConfig.mockResolvedValue({
+        ...baseAppConfig,
+        mcpSettings: { apps: true, appAutoOpen: { allow: ['yaml-server', 'user-added'] } },
+        mcpConfig: { 'yaml-server': { type: 'streamable-http', url: 'https://mcp.example.com' } },
+      });
+
+      const response = await request(createApp(mockUser)).get('/api/config');
+
+      expect(response.body.mcpApps.autoOpenServers).toEqual(['yaml-server']);
+    });
+
     it('publishes deployment-owned MCP App sandbox limits', async () => {
       mockGetAppConfig.mockResolvedValue({
         ...baseAppConfig,

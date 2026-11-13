@@ -34,6 +34,7 @@ const {
   EModelEndpoint,
   defaultSocialLogins,
   resolveMCPAppsPolicy,
+  resolveMCPAppAutoOpenServers,
 } = require('librechat-data-provider');
 const { logger, SystemCapabilities, configCapability } = require('@librechat/data-schemas');
 const { hasCapability, getHeldCapabilities } = require('~/server/middleware/roles/capabilities');
@@ -355,6 +356,10 @@ router.get('/', async function (req, res) {
         appConfig?.mcpAppSandbox?.maxActiveViews,
         appConfig?.mcpAppSandbox?.maxActionPreviewChars,
         appConfig?.mcpAppSandbox?.operationLimits,
+        resolveMCPAppAutoOpenServers(
+          appConfig?.mcpSettings?.appAutoOpen?.allow,
+          appConfig?.mcpConfig,
+        ),
       ),
       ...codeEnvironmentMoveCapabilities,
       ...resolveCodeWorkspaceInheritanceCapability(process.env.CODE_ENVIRONMENT_DECISION_VERSION),

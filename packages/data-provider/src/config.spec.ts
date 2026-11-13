@@ -30,6 +30,7 @@ import {
   MAX_MCP_APP_PERSISTED_BYTES,
   resolveMCPAppRateLimits,
   resolveMCPAppsPolicy,
+  resolveMCPAppAutoOpenServers,
   endpointSchema,
   isTwoFactorPolicyProvider,
   resolveEndpointType,
@@ -2776,6 +2777,38 @@ describe('MCP Apps configuration', () => {
         sandbox.operationLimits,
       ).operationLimits,
     ).toEqual({ ...DEFAULT_MCP_APP_OPERATION_LIMITS, maxBytes: 2 * 1024 * 1024 });
+  });
+
+  it('auto-opens Views only for listed servers the deployment configures', () => {
+    const settings = configSchema.parse({
+      version: '1.2.1',
+      mcpSettings: { apps: true, appAutoOpen: { allow: ['yaml', 'yaml', 'user-added'] } },
+    }).mcpSettings;
+    const servers = resolveMCPAppAutoOpenServers(settings?.appAutoOpen?.allow, {
+      yaml: {},
+      other: {},
+    });
+
+    expect(servers).toEqual(['yaml']);
+    expect(resolveMCPAppAutoOpenServers(undefined, { yaml: {} })).toEqual([]);
+    expect(resolveMCPAppAutoOpenServers(['yaml'], undefined)).toEqual([]);
+    expect(resolveMCPAppAutoOpenServers(['constructor'], {})).toEqual([]);
+
+    const policy = (autoOpen?: string[]) =>
+      resolveMCPAppsPolicy(
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        autoOpen,
+      );
+    expect(policy(servers).autoOpenServers).toEqual(['yaml']);
+    expect(policy([])).not.toHaveProperty('autoOpenServers');
+    expect(policy()).not.toHaveProperty('autoOpenServers');
   });
 
   it('publishes optional runtime sandbox fields in the effective policy', () => {
