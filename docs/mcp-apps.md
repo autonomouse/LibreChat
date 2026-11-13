@@ -36,6 +36,22 @@ bridge, cancels pending approval and in-flight authenticated resource operations
 a fresh session and does not restore its previous in-View state. Keyboard focus moves to the new
 Close/Open control after a user-initiated transition, including the in-dialog Stop app control.
 
+A deployment can let the Views of servers it trusts open without that click:
+
+```yaml
+mcpSettings:
+  apps: true
+  appAutoOpen:
+    allow: ['my-server']
+```
+
+A listed server's View opens when its tool result arrives in the response being generated. Only
+servers defined in `librechat.yaml` qualify; a name the deployment does not configure is ignored.
+Opening or restoring a saved conversation still shows the **Open app** placeholder, as do shared and
+read-only views. A View opened this way takes a `maxActiveViews` slot; when none is free it stays
+closed, and it does not move keyboard focus. A View the user closes stays closed. Only starting the
+View is relaxed: every App-initiated action still needs the confirmation described below.
+
 Opening an App permits its own resource reads and declared link policy, but does not approve actions
 on the user's behalf. Each App-initiated tool call displays the originating server, tool name and
 complete arguments in a host-owned confirmation; App-initiated chat text shows the complete text

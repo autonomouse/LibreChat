@@ -14,6 +14,7 @@ import type { MCPAppResourceOccurrence } from '~/utils/mcpApps';
 import { useMCPAppsHost, useMCPAppViewAtCapacity } from '~/Providers/MCPAppsPolicyContext';
 import { selectToolCallUIResources, getInlineResourceHtml } from '~/utils/mcpApps';
 import { useIsMessagesViewReadOnly } from '~/Providers/MessagesViewContext';
+import { useMessageContext } from '~/Providers/MessageContext';
 import { lazyWithRecovery } from '~/lib/assets/lazy';
 import { MCPAppLoading } from './MCPAppFrame';
 import { useLocalize } from '~/hooks';
@@ -98,13 +99,16 @@ const MCPAppView = React.memo(function MCPAppView({
   app,
   userId,
   ordinal,
+  resourceKey,
 }: {
   app: UIResource;
   userId: string;
   ordinal: number;
+  resourceKey: string;
 }) {
   const localize = useLocalize();
-  const { reserveView, releaseView } = useMCPAppsHost();
+  const { reserveView, releaseView, autoOpenedViews, policy } = useMCPAppsHost();
+  const { isSubmitting, isLatestMessage } = useMessageContext();
   const readOnly = useIsMessagesViewReadOnly();
   const unavailable = readOnly && !getInlineResourceHtml(app);
   const viewKey = useId();
@@ -128,14 +132,37 @@ const MCPAppView = React.memo(function MCPAppView({
       setOpened(false);
     }
   }, [unavailable, releaseView, viewKey]);
+  /**
+   * A View from a server the deployment lists in `mcpSettings.appAutoOpen` opens as its result
+   * arrives in the turn being generated, or when it remounts after having done so. Whether it
+   * arrived live is read once, on mount, so a saved conversation's Views keep their Open control.
+   * A View the user closed, or one a full host had no room for, is settled and stays closed.
+   * Focus and scroll are left alone and no capacity notice shows: the user asked for nothing.
+   */
+  const arrivedLive = useRef(isSubmitting === true && isLatestMessage === true);
+  const autoOpenAllowed =
+    !readOnly && !!app.serverName && policy.autoOpenServers?.includes(app.serverName) === true;
+  const autoOpenSettled = useRef(false);
+  useEffect(() => {
+    if (autoOpenSettled.current || !autoOpenAllowed) return;
+    if (!arrivedLive.current && !autoOpenedViews.has(resourceKey)) return;
+    if (!reserveView(viewKey)) {
+      autoOpenSettled.current = true;
+      return;
+    }
+    autoOpenedViews.remember(resourceKey);
+    setOpened(true);
+  }, [autoOpenAllowed, autoOpenedViews, reserveView, resourceKey, viewKey]);
   const close = useCallback(
     (restoreFocus = true) => {
       focusAfterTransition.current = restoreFocus ? 'open' : null;
+      autoOpenSettled.current = true;
+      autoOpenedViews.forget(resourceKey);
       releaseView(viewKey);
       setOpened(false);
       setAtCapacity(false);
     },
-    [releaseView, viewKey],
+    [autoOpenedViews, releaseView, resourceKey, viewKey],
   );
   useEffect(
     () => () => {
@@ -234,6 +261,7 @@ export function MCPAppViews({
           key={JSON.stringify([userId, key])}
           app={resource}
           userId={userId}
+          resourceKey={key}
           ordinal={ordinalStart + index}
         />
       ))}
