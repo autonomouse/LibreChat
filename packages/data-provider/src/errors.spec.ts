@@ -1,4 +1,10 @@
-import { isFailedToolOutput, hasToolCallErrorPrefix, stripToolCallErrorPrefix } from './errors';
+import {
+  isFailedToolOutput,
+  hasToolCallErrorPrefix,
+  stripToolCallErrorPrefix,
+  stripToolErrorRetryHint,
+  TOOL_ERROR_RETRY_HINT,
+} from './errors';
 
 describe('tool call errors', () => {
   test.each([
@@ -35,6 +41,7 @@ describe('isFailedToolOutput', () => {
     'Error processing tool',
     'Error processing tool: boom',
     'Error: Received tool input did not match expected schema\n Please fix your mistakes.',
+    `Error: Received tool input did not match expected schema\n ${TOOL_ERROR_RETRY_HINT}`,
   ])('treats %j as a failed call', (output) => {
     expect(isFailedToolOutput(output)).toBe(true);
   });
@@ -45,4 +52,19 @@ describe('isFailedToolOutput', () => {
       expect(isFailedToolOutput(output)).toBe(false);
     },
   );
+});
+
+describe('stripToolErrorRetryHint', () => {
+  test.each([
+    'Error: Invalid search arguments\n Please fix your mistakes.',
+    `Error: Invalid search arguments\n ${TOOL_ERROR_RETRY_HINT}`,
+  ])('removes the closing retry hint from %j', (output) => {
+    expect(stripToolErrorRetryHint(output)).toBe('Error: Invalid search arguments');
+  });
+
+  test('leaves the hint alone anywhere but the end', () => {
+    const output = 'Please fix your mistakes. Then the search ran.';
+
+    expect(stripToolErrorRetryHint(output)).toBe(output);
+  });
 });

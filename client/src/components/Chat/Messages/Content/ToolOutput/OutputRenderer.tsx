@@ -3,8 +3,8 @@ import copy from 'copy-to-clipboard';
 import { isError } from '@librechat/chat';
 import { Button } from '@librechat/client';
 import { useToolContentPending } from '@librechat/chat/react';
-import { stripToolCallErrorPrefix } from 'librechat-data-provider';
 import { PANE_COPY_REVEAL, CopyButton } from '@librechat/chat/components';
+import { stripToolCallErrorPrefix, stripToolErrorRetryHint } from 'librechat-data-provider';
 import type { UIEvent } from 'react';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -19,10 +19,7 @@ const ERROR_INNER = /^Error\s+\w+ing to endpoint\s*\(HTTP \d+\):\s*/i;
 function cleanError(text: string): string {
   let cleaned = stripToolCallErrorPrefix(text).trim();
   cleaned = cleaned.replace(ERROR_INNER, '').trim();
-  if (cleaned.endsWith('Please fix your mistakes.')) {
-    cleaned = cleaned.slice(0, -'Please fix your mistakes.'.length).trim();
-  }
-  return cleaned;
+  return stripToolErrorRetryHint(cleaned).trim();
 }
 
 function isStructuredText(text: string): boolean {
