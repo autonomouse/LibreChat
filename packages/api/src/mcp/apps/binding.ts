@@ -36,6 +36,38 @@ export function projectMCPAppRuntimeTarget(config: MCPOptions): MCPAppRuntimeTar
   return { type: config.type, url: config.url };
 }
 
+/**
+ * Fields an App binding never reads, dropped before placeholder resolution so
+ * validating a persisted App cannot depend on a credential it does not inspect.
+ *
+ * `projectMCPAppRuntimeTarget` keeps only routing identity, but `processMCPEnv`
+ * resolves every field it is handed, and `{{LIBRECHAT_OPENID_ACCESS_TOKEN}}` (or
+ * its `{{LIBRECHAT_OPENID_TOKEN}}` alias) in a header raises
+ * `OpenIDReauthRequiredError` when the request-time user snapshot carries a stale
+ * access token. `validateAppBinding` never refreshes that snapshot, so once the
+ * token expired every persisted App of a direct-bearer server failed to load,
+ * although the App operations that follow refresh the bearer through
+ * `resolveDirectOpenIDBearerConfig`. `buildMCPDomainValidationConfig` narrows the
+ * domain check the same way.
+ *
+ * `url`, `args` and `env` are deliberately absent from this list: a runtime target
+ * reads them, so an unresolvable placeholder there must keep failing closed.
+ */
+const UNREAD_BY_APP_BINDING = ['apiKey', 'headers', 'oauth', 'oauth_headers'] as const;
+
+/**
+ * Narrows a server config to what an App binding reads. Every other field is
+ * preserved, including the `source` and `dbId` that decide which placeholders
+ * `processMCPEnv` resolves at all. The argument is never mutated.
+ */
+export function buildMCPAppBindingConfig<T extends MCPOptions>(config: T): T {
+  const bindingConfig: Record<string, unknown> = { ...(config as Record<string, unknown>) };
+  for (const field of UNREAD_BY_APP_BINDING) {
+    delete bindingConfig[field];
+  }
+  return bindingConfig as unknown as T;
+}
+
 export function createMCPAppBindingCodec(secret: string): MCPAppBindingCodec {
   if (!secret) {
     throw new Error('JWT_SECRET is required to bind persisted MCP Apps');
