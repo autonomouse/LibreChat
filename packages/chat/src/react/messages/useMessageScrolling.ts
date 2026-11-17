@@ -17,6 +17,12 @@ export type MessageScrollingInput = {
   setAbortScroll: Dispatch<SetStateAction<boolean>>;
   /** Whether opening a conversation lands the reader on its newest message. */
   autoScroll: boolean;
+  /** Whether a send holds the reader's own message at the top of the viewport while its
+   *  response streams, instead of riding the response to its end. */
+  anchorTurn?: boolean;
+  /** Whether a reader who scrolls down to the end of an anchored turn rides the response from
+   *  there; otherwise only the scroll-to-bottom control starts the ride. */
+  anchorResumeOnScroll?: boolean;
 };
 
 /** The scroll machinery of the message list. */
@@ -50,13 +56,29 @@ const glideTimeout = 700;
 const attachThreshold = 150;
 const detachThreshold = 24;
 
+/** A row the reader authored. The class sits on the row's direct child, which keeps a steer
+ *  drawn inside a response from being read as the turn that was sent. */
+const sentRowSelector = '.message-render > .user-turn';
+
+const findSentRow = (contentEl: HTMLElement): HTMLElement | null => {
+  const turns = contentEl.querySelectorAll<HTMLElement>(sentRowSelector);
+  return turns.length > 0 ? turns[turns.length - 1].parentElement : null;
+};
+
+/** Rows clear the header through their `scroll-margin-top`; anchoring keeps that clearance. */
+const readScrollMargin = (row: HTMLElement): number => {
+  const value = parseFloat(getComputedStyle(row).scrollMarginTop);
+  return Number.isFinite(value) ? value : 0;
+};
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** Follows the stream, lands on a conversation's end once its rows mount, and keeps the
- *  reader's position when they scroll away. */
+/** Follows the stream, or holds the sent message at the top of the viewport when the turn is
+ *  anchored; lands on a conversation's end once its rows mount, and keeps the reader's
+ *  position when they scroll away. */
 export default function useMessageScrolling({
   messagesTree,
   conversationId,
@@ -64,6 +86,8 @@ export default function useMessageScrolling({
   abortScroll,
   setAbortScroll,
   autoScroll,
+  anchorTurn = false,
+  anchorResumeOnScroll = false,
 }: MessageScrollingInput): MessageScrolling {
   const scrollableRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -88,6 +112,16 @@ export default function useMessageScrolling({
   /** The conversation whose newest message has already been landed on, so the
    *  stream deltas that follow cannot re-take a reader who scrolled away. */
   const landedConversationRef = useRef<string | null>(null);
+
+  /** Whether this thread holds an anchored turn: set by a send, and kept after the response
+   *  settles so the room under the sent message outlives the run. */
+  const isAnchoredRef = useRef(false);
+  /** The sent message the anchored turn rests on. */
+  const sentRowRef = useRef<HTMLElement | null>(null);
+  /** Where an anchored turn was last placed, or `null` once the reader has moved the thread
+   *  themselves and the placement is no longer being kept. */
+  const anchorTopRef = useRef<number | null>(null);
+  const anchorConversationRef = useRef<string | null>(null);
 
   const getIsNearBottom = useCallback(() => {
     const scrollEl = scrollableRef.current;
@@ -132,11 +166,96 @@ export default function useMessageScrolling({
     lastScrollTopRef.current = scrollEl.scrollTop;
   }, []);
 
+  /** Gives back the room an anchored turn reserved and forgets the turn. */
+  const releaseAnchor = useCallback(() => {
+    if (!isAnchoredRef.current) {
+      return;
+    }
+    isAnchoredRef.current = false;
+    sentRowRef.current = null;
+    anchorTopRef.current = null;
+    anchorConversationRef.current = null;
+    if (contentRef.current) {
+      contentRef.current.style.minHeight = '';
+    }
+  }, []);
+
+  /**
+   * Rest the thread with the message that was just sent at the top of the viewport.
+   *
+   * A short response leaves nothing below the sent message to scroll into, so the thread is
+   * given a minimum height that reaches one viewport past it. The height depends only on what
+   * sits above the sent message, so a response growing underneath never changes it and the
+   * browser never has a reason to move the thread: there is nothing to correct per delta.
+   *
+   * `place` moves the reader there, once, as the turn starts. Otherwise the position is only
+   * restored, and only while the thread is still exactly where it was put: when the layout
+   * above the sent message shifts, or the viewport grows and the browser clamps the thread.
+   * A thread found anywhere else was moved by the reader, who keeps it from then on.
+   */
+  const settleAnchor = useCallback(
+    (place = false) => {
+      const scrollEl = scrollableRef.current;
+      const contentEl = contentRef.current;
+      if (!scrollEl || !contentEl || !isAnchoredRef.current) {
+        return;
+      }
+
+      let row = sentRowRef.current;
+      if (row == null || !row.isConnected) {
+        row = findSentRow(contentEl);
+        sentRowRef.current = row;
+      }
+      if (row == null) {
+        anchorTopRef.current = null;
+        contentEl.style.minHeight = '';
+        return;
+      }
+
+      const top = scrollEl.scrollTop;
+      const reach = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const contentStart = contentEl.getBoundingClientRect().top - scrollRect.top + top;
+      const target = Math.max(
+        0,
+        Math.round(top + row.getBoundingClientRect().top - scrollRect.top - readScrollMargin(row)),
+      );
+      contentEl.style.minHeight = `${Math.ceil(target + scrollEl.clientHeight - contentStart)}px`;
+
+      if (!place) {
+        const held = anchorTopRef.current;
+        if (held == null) {
+          return;
+        }
+        /** Short of where it was put and resting on the end of what could be reached is the
+         *  browser clamping the thread; anything else is the reader. */
+        const clamped = top < held && top >= reach - 1;
+        if (Math.abs(top - held) > 1 && !clamped) {
+          anchorTopRef.current = null;
+          return;
+        }
+      }
+
+      if (Math.abs(top - target) >= 1) {
+        scrollEl.scrollTop = target;
+      }
+      anchorTopRef.current = scrollEl.scrollTop;
+      lastScrollTopRef.current = scrollEl.scrollTop;
+      isNearBottomRef.current = getIsNearBottom();
+    },
+    [getIsNearBottom],
+  );
+
   const debouncedHandleScroll = useCallback(() => {
     const scrollEl = scrollableRef.current;
     isNearBottomRef.current = getIsNearBottom();
     if (!scrollEl) {
       return;
+    }
+
+    /** A thread that is no longer where the anchored turn put it was moved by the reader. */
+    if (anchorTopRef.current != null && Math.abs(scrollEl.scrollTop - anchorTopRef.current) > 1) {
+      anchorTopRef.current = null;
     }
 
     /** Direction comes from where the thread actually moved, which covers the
@@ -163,7 +282,12 @@ export default function useMessageScrolling({
      *  short of where that tick is taking it, and reading the distance then calls
      *  a gesture that lands on the end a miss. */
     if (movingDown) {
-      if (distance <= attachThreshold) {
+      /** The end of an anchored turn is within reach from the start, so arriving there is a
+       *  weaker signal than it is while following, and attaching on it can carry off a reader
+       *  who only nudged the thread down. Whether it counts is the deployment's choice; when
+       *  it does, it must be the reader's own scroll, never the placement that parked them. */
+      const mayAttach = !anchorTurn || (anchorResumeOnScroll && anchorTopRef.current == null);
+      if (distance <= attachThreshold && mayAttach) {
         isStuckRef.current = true;
         /** Cleared unconditionally rather than on a read of the current value.
          *  `Message` raises this on every wheel tick, downward ones included, so
@@ -180,12 +304,13 @@ export default function useMessageScrolling({
       isStuckRef.current = false;
       glideInterruptedRef.current = true;
     }
-  }, [distanceFromEnd, getIsNearBottom, setAbortScroll]);
+  }, [anchorResumeOnScroll, anchorTurn, distanceFromEnd, getIsNearBottom, setAbortScroll]);
 
   const scrollCallback = () => {
     reconcileMessageContentLayout(scrollableRef.current);
     isNearBottomRef.current = true;
     isStuckRef.current = true;
+    anchorTopRef.current = null;
     rememberScrollPosition();
   };
 
@@ -288,6 +413,15 @@ export default function useMessageScrolling({
         return;
       }
 
+      /** An anchored turn the reader has not asked to ride never follows a resize: a View
+       *  opening or a tool result expanding fills in below the sent message. Only the
+       *  placement itself is kept. */
+      if (anchorTurn && !(isSubmitting && isStuckRef.current)) {
+        suppressNextResizeFollowRef.current = false;
+        settleAnchor();
+        return;
+      }
+
       if (suppressNextResizeFollowRef.current) {
         suppressNextResizeFollowRef.current = false;
         isNearBottomRef.current = getIsNearBottom();
@@ -319,7 +453,7 @@ export default function useMessageScrolling({
         followBottom();
       }
     },
-    [clampScrollToContent, followBottom, getIsNearBottom, isSubmitting],
+    [anchorTurn, clampScrollToContent, followBottom, getIsNearBottom, isSubmitting, settleAnchor],
   );
 
   useEffect(() => {
@@ -330,8 +464,13 @@ export default function useMessageScrolling({
 
     const observer = new ResizeObserver(() => reconcileContentResize());
     observer.observe(contentEl);
+    /** The room reserved under an anchored turn is measured against the viewport, which the
+     *  composer resizes without the content changing size. */
+    if (anchorTurn && scrollableRef.current) {
+      observer.observe(scrollableRef.current);
+    }
     return () => observer.disconnect();
-  }, [reconcileContentResize]);
+  }, [anchorTurn, reconcileContentResize]);
 
   useEffect(() => {
     const contentEl = contentRef.current;
@@ -419,6 +558,36 @@ export default function useMessageScrolling({
       wasSubmittingRef.current = false;
     }
 
+    if (anchorTurn) {
+      /** Not gated on the abort flag: sending is the reader asking for this turn, whatever
+       *  they did during the last one. */
+      if (startedSubmitting) {
+        wasSubmittingRef.current = true;
+        isStuckRef.current = false;
+        isAnchoredRef.current = true;
+        sentRowRef.current = null;
+        anchorConversationRef.current = conversationId ?? null;
+        settleAnchor(true);
+        return;
+      }
+      if (isSubmitting) {
+        /** A new chat is given its id while its first turn streams. */
+        anchorConversationRef.current = conversationId ?? null;
+        if (isStuckRef.current) {
+          followBottom();
+          return;
+        }
+      } else if (anchorConversationRef.current !== (conversationId ?? null)) {
+        /** The room belonged to the turn of a conversation the reader has since left. */
+        releaseAnchor();
+        return;
+      }
+      /** The settled turn keeps its room, so a short response still ends with the sent
+       *  message at the top; a row remounted by the saved copy is found again here. */
+      settleAnchor();
+      return;
+    }
+
     /** The start of a turn is spent only once it can be acted on. A reader who
      *  scrolled away during the last answer leaves the abort flag raised, and
      *  nothing lowers it until the next connection opens, which is after this effect
@@ -447,7 +616,17 @@ export default function useMessageScrolling({
         scrollToBottom?.cancel();
       }
     };
-  }, [isSubmitting, messagesTree, scrollToBottom, abortScroll, followBottom]);
+  }, [
+    isSubmitting,
+    messagesTree,
+    scrollToBottom,
+    abortScroll,
+    followBottom,
+    anchorTurn,
+    conversationId,
+    settleAnchor,
+    releaseAnchor,
+  ]);
 
   /**
    * Land on the newest message when a conversation is opened.
@@ -500,8 +679,14 @@ export default function useMessageScrolling({
     }
 
     landedConversationRef.current = conversationId;
+    /** A conversation that arrives under an anchored turn (a new chat receiving its id, or one
+     *  opened mid-response) is already resting on the sent message; landing on its end would
+     *  take the reader off it. */
+    if (anchorTurn && (isSubmitting || isAnchoredRef.current)) {
+      return;
+    }
     scrollToBottom();
-  }, [autoScroll, conversationId, messagesTree, scrollToBottom]);
+  }, [anchorTurn, autoScroll, conversationId, isSubmitting, messagesTree, scrollToBottom]);
 
   return {
     contentRef,

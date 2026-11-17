@@ -20,6 +20,7 @@ import {
   logger,
   setDraft,
   scrollToEnd,
+  anchorsSentTurn,
   requestChatFocus,
   withoutListFlags,
   setDocumentTitle,
@@ -114,9 +115,14 @@ export default function useEventServices({ setConversation }: EventServicesParam
       announce: announcePolite,
       showRegenerated,
       focusComposer: () => requestChatFocus(),
-      scrollToEnd: () => scrollToEnd(),
+      scrollToEnd: () => {
+        if (anchorsSentTurn(queryClient.getQueryData<TStartupConfig>(startupConfigKey(true)))) {
+          return;
+        }
+        scrollToEnd();
+      },
     }),
-    [announcePolite, showRegenerated],
+    [announcePolite, showRegenerated, queryClient],
   );
   const templates = useMemo<TemplateServices>(
     () => ({

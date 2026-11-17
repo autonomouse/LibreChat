@@ -14,7 +14,7 @@ import {
   preserveStreamedContentIdentity,
   STREAM_START_FAILED_METADATA_KEY,
 } from '@librechat/chat';
-import type { TMessage, TMessageContentParts } from 'librechat-data-provider';
+import type { TMessage, TStartupConfig, TMessageContentParts } from 'librechat-data-provider';
 import type { BranchSiblingIndex } from '@librechat/chat';
 import type { QueryClient } from '@tanstack/react-query';
 
@@ -84,6 +84,14 @@ export const markStreamStartFailedMetadata = (
   ...(metadata ?? {}),
   [STREAM_START_FAILED_METADATA_KEY]: true,
 });
+
+/** `interface.streamScroll: anchor`: a send rests on the message that was sent, not on the end. */
+export const anchorsSentTurn = (startupConfig?: TStartupConfig | null): boolean =>
+  startupConfig?.interface?.streamScroll === 'anchor';
+
+/** `interface.streamScrollResume: scroll`: reaching the end of an anchored turn by hand rides it. */
+export const resumesStreamOnScroll = (startupConfig?: TStartupConfig | null): boolean =>
+  startupConfig?.interface?.streamScrollResume === 'scroll';
 
 export const scrollToEnd = (callback?: () => void) => {
   const messagesEndElement = document.getElementById('messages-end');

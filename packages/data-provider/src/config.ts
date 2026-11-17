@@ -3355,6 +3355,14 @@ export const interfaceSchema = z
      *  than the one the header's model selector already shows (`whenDifferent`), which drops the
      *  avatar and name row from that agent's responses. */
     messageAuthor: z.enum(['always', 'whenDifferent']).optional(),
+    /** Where the thread rests while a response streams: riding its newest line (`follow`), or
+     *  holding the message the reader just sent at the top of the viewport (`anchor`), so the
+     *  response fills in below it and the reader starts at its beginning. */
+    streamScroll: z.enum(['follow', 'anchor']).optional(),
+    /** What lets a reader ride the response again once `streamScroll: anchor` has parked the
+     *  thread: only the scroll-to-bottom control (`control`), or also scrolling down to the end
+     *  by hand (`scroll`), the way `follow` re-attaches. */
+    streamScrollResume: z.enum(['control', 'scroll']).optional(),
     mcpServers: mcpServersSchema.optional(),
     modelSelect: z.boolean().optional(),
     /** Set to false during a rolling upgrade, until every API replica supports title ownership and old title jobs drain. */
@@ -3679,6 +3687,8 @@ export const interfaceSchema = z
     landingHeading: 'entity',
     landingFooter: true,
     messageAuthor: 'always',
+    streamScroll: 'follow',
+    streamScrollResume: 'control',
     remoteAgents: {
       use: false,
       create: false,

@@ -21,6 +21,8 @@ export function createMessagesHost(overrides: Partial<MessagesHost> = {}): Messa
     renderMessageAudio: () => null,
     useScreenshotTarget: () => undefined,
     useAutoScroll: () => false,
+    useAnchorTurn: () => false,
+    useAnchorResumeOnScroll: () => false,
     useConversationMessages: () => undefined,
     useAssistant: () => undefined,
     useGetAddedConvo: () => () => null,
