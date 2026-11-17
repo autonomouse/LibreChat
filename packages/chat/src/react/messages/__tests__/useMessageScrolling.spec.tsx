@@ -851,6 +851,26 @@ describe('useMessageScrolling anchored turn', () => {
     expect(scrollable.scrollTop).toBe(1390);
   });
 
+  it('rides from the end the reader scrolled down to when the deployment allows it', () => {
+    const view = render(anchored({ isSubmitting: false, anchorResumeOnScroll: true }));
+    const { scrollable, layout } = layOut({ sentOffset: 800, scrollHeight: 900 });
+    view.rerender(anchored({ anchorResumeOnScroll: true }));
+    layout.scrollHeight = 2000;
+
+    /** The placement's own scroll event is not the reader arriving at the end. */
+    fireEvent.scroll(scrollable);
+    layout.scrollHeight = 2100;
+    resize();
+    expect(scrollable.scrollTop).toBe(800);
+
+    scrollable.scrollTop = 1490;
+    fireEvent.scroll(scrollable);
+    layout.scrollHeight = 3000;
+    resize();
+
+    expect(scrollable.scrollTop).toBe(2400);
+  });
+
   it('rides the response once the reader uses the scroll-to-bottom control', () => {
     const { view, scrollable, layout } = send();
     layout.scrollHeight = 2000;

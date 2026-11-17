@@ -101,6 +101,7 @@ export default function MessagesView({
   const conversationId = conversation?.conversationId;
   const autoScroll = host.useAutoScroll();
   const anchorTurn = host.useAnchorTurn();
+  const anchorResumeOnScroll = host.useAnchorResumeOnScroll();
   const {
     contentRef,
     scrollableRef,
@@ -116,6 +117,7 @@ export default function MessagesView({
     setAbortScroll,
     autoScroll,
     anchorTurn,
+    anchorResumeOnScroll,
   });
 
   useScrollbarGutter(scrollableRef);

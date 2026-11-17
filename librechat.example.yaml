@@ -220,6 +220,10 @@ interface:
   # below without moving the view, until the reader scrolls or uses the scroll-to-bottom button.
   # Opening a saved conversation still follows each user's own auto-scroll setting.
   # streamScroll: follow
+  # With streamScroll: anchor, what lets a reader ride the response again (default: control).
+  # 'control' rides only after the scroll-to-bottom button. 'scroll' also rides once the reader
+  # scrolls down to the end by hand, as 'follow' does. Ignored when streamScroll is 'follow'.
+  # streamScrollResume: control
   # Allow renaming a running chat or one with a placeholder title (default: true).
   # Set to false during a rolling upgrade, until ALL API replicas are upgraded and old
   # title-generation jobs have drained. While false, rename is disabled for running chats

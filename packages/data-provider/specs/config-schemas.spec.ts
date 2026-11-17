@@ -1598,6 +1598,11 @@ describe('interfaceSchema', () => {
     expect(interfaceSchema.parse({ streamScroll: 'anchor' }).streamScroll).toBe('anchor');
     expect(interfaceSchema.parse({})).not.toHaveProperty('streamScroll');
     expect(interfaceSchema.safeParse({ streamScroll: true }).success).toBe(false);
+    expect(interfaceSchema.parse({ streamScrollResume: 'scroll' }).streamScrollResume).toBe(
+      'scroll',
+    );
+    expect(interfaceSchema.parse({})).not.toHaveProperty('streamScrollResume');
+    expect(interfaceSchema.safeParse({ streamScrollResume: 'never' }).success).toBe(false);
   });
 
   it('silently strips removed legacy fields', () => {

@@ -12,6 +12,7 @@ import {
   isSubmittableMessage,
   createDualMessageContent,
   anchorsSentTurn,
+  resumesStreamOnScroll,
 } from '../messages';
 
 const translations: Record<string, string> = {
@@ -312,5 +313,17 @@ describe('anchorsSentTurn', () => {
     expect(anchorsSentTurn(withStreamScroll())).toBe(false);
     expect(anchorsSentTurn({} as TStartupConfig)).toBe(false);
     expect(anchorsSentTurn(undefined)).toBe(false);
+  });
+});
+
+describe('resumesStreamOnScroll', () => {
+  const withResume = (streamScrollResume?: 'control' | 'scroll') =>
+    ({ interface: { streamScrollResume } }) as TStartupConfig;
+
+  it('is on only when the deployment lets a hand scroll resume the ride', () => {
+    expect(resumesStreamOnScroll(withResume('scroll'))).toBe(true);
+    expect(resumesStreamOnScroll(withResume('control'))).toBe(false);
+    expect(resumesStreamOnScroll(withResume())).toBe(false);
+    expect(resumesStreamOnScroll(undefined)).toBe(false);
   });
 });

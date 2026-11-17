@@ -20,6 +20,9 @@ export type MessageScrollingInput = {
   /** Whether a send holds the reader's own message at the top of the viewport while its
    *  response streams, instead of riding the response to its end. */
   anchorTurn?: boolean;
+  /** Whether a reader who scrolls down to the end of an anchored turn rides the response from
+   *  there; otherwise only the scroll-to-bottom control starts the ride. */
+  anchorResumeOnScroll?: boolean;
 };
 
 /** The scroll machinery of the message list. */
@@ -84,6 +87,7 @@ export default function useMessageScrolling({
   setAbortScroll,
   autoScroll,
   anchorTurn = false,
+  anchorResumeOnScroll = false,
 }: MessageScrollingInput): MessageScrolling {
   const scrollableRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -278,10 +282,12 @@ export default function useMessageScrolling({
      *  short of where that tick is taking it, and reading the distance then calls
      *  a gesture that lands on the end a miss. */
     if (movingDown) {
-      /** An anchored turn is ridden only when the reader asks for it with the scroll control.
-       *  Its end is within reach from the start, so arriving there says nothing about intent,
-       *  and attaching on it would carry off a reader who only nudged the thread down. */
-      if (distance <= attachThreshold && !anchorTurn) {
+      /** The end of an anchored turn is within reach from the start, so arriving there is a
+       *  weaker signal than it is while following, and attaching on it can carry off a reader
+       *  who only nudged the thread down. Whether it counts is the deployment's choice; when
+       *  it does, it must be the reader's own scroll, never the placement that parked them. */
+      const mayAttach = !anchorTurn || (anchorResumeOnScroll && anchorTopRef.current == null);
+      if (distance <= attachThreshold && mayAttach) {
         isStuckRef.current = true;
         /** Cleared unconditionally rather than on a read of the current value.
          *  `Message` raises this on every wheel tick, downward ones included, so
@@ -298,7 +304,7 @@ export default function useMessageScrolling({
       isStuckRef.current = false;
       glideInterruptedRef.current = true;
     }
-  }, [anchorTurn, distanceFromEnd, getIsNearBottom, setAbortScroll]);
+  }, [anchorResumeOnScroll, anchorTurn, distanceFromEnd, getIsNearBottom, setAbortScroll]);
 
   const scrollCallback = () => {
     reconcileMessageContentLayout(scrollableRef.current);

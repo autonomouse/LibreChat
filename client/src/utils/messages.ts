@@ -89,6 +89,10 @@ export const markStreamStartFailedMetadata = (
 export const anchorsSentTurn = (startupConfig?: TStartupConfig | null): boolean =>
   startupConfig?.interface?.streamScroll === 'anchor';
 
+/** `interface.streamScrollResume: scroll`: reaching the end of an anchored turn by hand rides it. */
+export const resumesStreamOnScroll = (startupConfig?: TStartupConfig | null): boolean =>
+  startupConfig?.interface?.streamScrollResume === 'scroll';
+
 export const scrollToEnd = (callback?: () => void) => {
   const messagesEndElement = document.getElementById('messages-end');
   if (messagesEndElement) {

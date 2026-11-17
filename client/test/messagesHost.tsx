@@ -24,6 +24,7 @@ export const testMessagesHost: MessagesHost = {
   useScreenshotTarget: () => undefined,
   useAutoScroll: () => false,
   useAnchorTurn: () => false,
+  useAnchorResumeOnScroll: () => false,
   useConversationMessages: () => undefined,
   useAssistant: () => undefined,
   useGetAddedConvo: () => () => null,
