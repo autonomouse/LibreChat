@@ -518,6 +518,7 @@ describe('welcome screen heading and footer', () => {
     expect(interfaceConfig?.landingHeading).toBe('entity');
     expect(interfaceConfig?.landingFooter).toBe(true);
     expect(interfaceConfig?.messageAuthor).toBe('always');
+    expect(interfaceConfig?.streamScroll).toBe('follow');
   });
 
   it('copies the configured settings through', async () => {
@@ -527,6 +528,7 @@ describe('welcome screen heading and footer', () => {
           landingHeading: 'greeting',
           landingFooter: 'composer',
           messageAuthor: 'whenDifferent',
+          streamScroll: 'anchor',
         },
       },
       configDefaults: getConfigDefaults(),
@@ -534,6 +536,7 @@ describe('welcome screen heading and footer', () => {
     expect(interfaceConfig?.landingHeading).toBe('greeting');
     expect(interfaceConfig?.landingFooter).toBe('composer');
     expect(interfaceConfig?.messageAuthor).toBe('whenDifferent');
+    expect(interfaceConfig?.streamScroll).toBe('anchor');
   });
 });
 

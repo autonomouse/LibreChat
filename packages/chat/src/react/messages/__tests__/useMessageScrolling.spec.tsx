@@ -655,3 +655,265 @@ describe('useMessageScrolling navigation landing', () => {
     expect(mockScrollToBottom).not.toHaveBeenCalled();
   });
 });
+
+describe('useMessageScrolling anchored turn', () => {
+  const viewport = 600;
+
+  function AnchorHarness({ messagesTree }: { messagesTree?: TMessage[] | null }) {
+    const inputs = useContext(ScrollingInputsContext);
+    const { contentRef, scrollableRef, messagesEndRef, debouncedHandleScroll } =
+      useMessageScrolling({ ...inputs, messagesTree });
+
+    return (
+      <div ref={scrollableRef} onScroll={debouncedHandleScroll} data-testid="scrollable">
+        <div ref={contentRef} data-testid="content">
+          <div className="message-render" data-testid="earlier">
+            <div className="user-turn" />
+          </div>
+          <div className="message-render" data-testid="sent">
+            <div className="user-turn" />
+          </div>
+          {/* A steer is drawn as a user turn inside the response; it is not the sent message. */}
+          <div className="message-render">
+            <div className="agent-turn">
+              <div className="user-turn" />
+            </div>
+          </div>
+          <div ref={messagesEndRef} data-testid="end" />
+        </div>
+      </div>
+    );
+  }
+
+  const anchored = (overrides: Partial<ScrollingInputs> = {}, messagesTree = [message]) => (
+    <ScrollingInputsContext.Provider value={createContextValue({ anchorTurn: true, ...overrides })}>
+      <AnchorHarness messagesTree={messagesTree} />
+    </ScrollingInputsContext.Provider>
+  );
+
+  /** Rects that move with the scroll position, as a laid-out thread's do. */
+  function layOut({ sentOffset, scrollHeight }: { sentOffset: number; scrollHeight: number }) {
+    const scrollable = screen.getByTestId('scrollable');
+    const content = screen.getByTestId('content');
+    const layout = { sentOffset, scrollHeight, clientHeight: viewport };
+    /** The thread is as tall as its rows, or as the minimum height it has been given. */
+    Object.defineProperty(scrollable, 'scrollHeight', {
+      get: () => Math.max(layout.scrollHeight, parseFloat(content.style.minHeight) || 0),
+      configurable: true,
+    });
+    Object.defineProperty(scrollable, 'clientHeight', {
+      get: () => layout.clientHeight,
+      configurable: true,
+    });
+    setRect(scrollable, { top: 0 });
+    content.getBoundingClientRect = jest.fn(() => ({ top: -scrollable.scrollTop }) as DOMRect);
+    screen.getByTestId('sent').getBoundingClientRect = jest.fn(
+      () => ({ top: layout.sentOffset - scrollable.scrollTop }) as DOMRect,
+    );
+    return { scrollable, layout };
+  }
+
+  /** A settled thread the reader was reading, then the send. */
+  function send(sentOffset = 800, scrollHeight = 900) {
+    const view = render(anchored({ isSubmitting: false }));
+    const laidOut = layOut({ sentOffset, scrollHeight });
+    laidOut.scrollable.scrollTop = 300;
+    view.rerender(anchored());
+    return { view, ...laidOut };
+  }
+
+  const resize = () =>
+    act(() => {
+      MockResizeObserver.last()?.trigger();
+    });
+
+  beforeEach(() => {
+    MockResizeObserver.reset();
+    MockIntersectionObserver.reset();
+    mockScrollToBottom.mockClear();
+    mockScrollCallback = undefined;
+    (global as unknown as { ResizeObserver: typeof MockResizeObserver }).ResizeObserver =
+      MockResizeObserver;
+    (
+      global as unknown as { IntersectionObserver: typeof MockIntersectionObserver }
+    ).IntersectionObserver = MockIntersectionObserver;
+  });
+
+  afterEach(() => {
+    (global as unknown as { ResizeObserver: typeof ResizeObserver | undefined }).ResizeObserver =
+      originalResizeObserver;
+    (
+      global as unknown as { IntersectionObserver: typeof IntersectionObserver | undefined }
+    ).IntersectionObserver = originalIntersectionObserver;
+  });
+
+  it('puts the sent message at the top of the viewport and reserves room under it', () => {
+    const { scrollable } = send();
+
+    expect(scrollable.scrollTop).toBe(800);
+    /** A short response has nothing below the sent message to scroll into, so the thread
+     *  reaches one viewport past it. */
+    expect(screen.getByTestId('content').style.minHeight).toBe('1400px');
+  });
+
+  it('places the turn even when the abort flag is still raised from the last one', () => {
+    const view = render(anchored({ isSubmitting: false }));
+    const { scrollable } = layOut({ sentOffset: 800, scrollHeight: 900 });
+    view.rerender(anchored({ abortScroll: true }));
+
+    expect(scrollable.scrollTop).toBe(800);
+  });
+
+  it('does not move as the response streams in or a panel opens', () => {
+    const { view, scrollable, layout } = send();
+    const scrollTo = jest.fn();
+    (scrollable as unknown as { scrollTo: jest.Mock }).scrollTo = scrollTo;
+
+    layout.scrollHeight = 5000;
+    view.rerender(anchored({}, [{ ...message }]));
+    resize();
+    layout.scrollHeight = 9000;
+    view.rerender(anchored({}, [{ ...message }]));
+    resize();
+
+    expect(scrollable.scrollTop).toBe(800);
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('still rests on the sent message when the run ends', () => {
+    const { view, scrollable, layout } = send();
+
+    layout.scrollHeight = 5000;
+    view.rerender(anchored({ isSubmitting: false }, [{ ...message }]));
+    resize();
+
+    expect(scrollable.scrollTop).toBe(800);
+    expect(screen.getByTestId('content').style.minHeight).toBe('1400px');
+  });
+
+  it('keeps the sent message in place when the layout above it shifts', () => {
+    const { scrollable, layout } = send();
+
+    layout.sentOffset = 950;
+    resize();
+
+    expect(scrollable.scrollTop).toBe(950);
+    expect(screen.getByTestId('content').style.minHeight).toBe('1550px');
+  });
+
+  it('restores a thread the browser clamped when the viewport grew', () => {
+    const { scrollable, layout } = send(800, 1400);
+
+    /** The composer collapses after the send: 100px more viewport, 100px less to scroll. */
+    layout.clientHeight = 700;
+    scrollable.scrollTop = 700;
+    resize();
+
+    expect(screen.getByTestId('content').style.minHeight).toBe('1500px');
+    expect(scrollable.scrollTop).toBe(800);
+  });
+
+  it('leaves a reader who scrolls by hand where they went', () => {
+    const { view, scrollable, layout } = send();
+    layout.scrollHeight = 2000;
+
+    scrollable.scrollTop = 1000;
+    fireEvent.scroll(scrollable);
+    layout.sentOffset = 950;
+    resize();
+    view.rerender(anchored({}, [{ ...message }]));
+
+    expect(scrollable.scrollTop).toBe(1000);
+  });
+
+  it('does not take back a reader whose scroll has not been reported yet', () => {
+    const { scrollable, layout } = send();
+    layout.scrollHeight = 2000;
+
+    /** The resize is observed before the scroll event for the same gesture is dispatched. */
+    scrollable.scrollTop = 640;
+    resize();
+    layout.sentOffset = 950;
+    resize();
+
+    expect(scrollable.scrollTop).toBe(640);
+  });
+
+  it('does not start riding the response when the reader scrolls down to its end', () => {
+    const { scrollable, layout } = send();
+    layout.scrollHeight = 2000;
+
+    scrollable.scrollTop = 1390;
+    fireEvent.scroll(scrollable);
+    layout.scrollHeight = 3000;
+    resize();
+
+    expect(scrollable.scrollTop).toBe(1390);
+  });
+
+  it('rides the response once the reader uses the scroll-to-bottom control', () => {
+    const { view, scrollable, layout } = send();
+    layout.scrollHeight = 2000;
+
+    act(() => {
+      mockScrollCallback?.();
+    });
+    layout.scrollHeight = 3000;
+    resize();
+    expect(scrollable.scrollTop).toBe(2400);
+
+    layout.scrollHeight = 3500;
+    view.rerender(anchored({}, [{ ...message }]));
+    expect(scrollable.scrollTop).toBe(2900);
+  });
+
+  it('gives the room back when the reader opens another conversation', () => {
+    const { view } = send();
+    view.rerender(anchored({ isSubmitting: false }, [{ ...message }]));
+    expect(screen.getByTestId('content').style.minHeight).toBe('1400px');
+
+    view.rerender(
+      anchored({ isSubmitting: false, conversationId: 'conversation-2' }, [
+        { ...message, conversationId: 'conversation-2' } as TMessage,
+      ]),
+    );
+
+    expect(screen.getByTestId('content').style.minHeight).toBe('');
+  });
+
+  it('reserves nothing in a conversation that holds no anchored turn', () => {
+    render(anchored({ isSubmitting: false }));
+    const { scrollable } = layOut({ sentOffset: 800, scrollHeight: 2000 });
+    scrollable.scrollTop = 300;
+
+    resize();
+
+    expect(scrollable.scrollTop).toBe(300);
+    expect(screen.getByTestId('content').style.minHeight).toBe('');
+  });
+
+  it('does not land on the end when a new chat receives its id mid-turn', () => {
+    const view = render(anchored({ isSubmitting: false, conversationId: 'new' }));
+    const { scrollable } = layOut({ sentOffset: 800, scrollHeight: 900 });
+    view.rerender(anchored({ conversationId: 'new' }));
+    mockScrollToBottom.mockClear();
+
+    view.rerender(anchored({ conversationId: 'conversation-1' }));
+    view.rerender(anchored({ isSubmitting: false, conversationId: 'conversation-1' }));
+
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
+    expect(scrollable.scrollTop).toBe(800);
+    expect(screen.getByTestId('content').style.minHeight).toBe('1400px');
+  });
+
+  it('follows the response as before when the turn is not anchored', () => {
+    const view = render(anchored({ isSubmitting: false, anchorTurn: false }));
+    const { scrollable } = layOut({ sentOffset: 800, scrollHeight: 900 });
+    const scrollTo = jest.fn();
+    (scrollable as unknown as { scrollTo: jest.Mock }).scrollTo = scrollTo;
+    view.rerender(anchored({ anchorTurn: false }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 300, behavior: 'smooth' });
+    expect(screen.getByTestId('content').style.minHeight).toBe('');
+  });
+});

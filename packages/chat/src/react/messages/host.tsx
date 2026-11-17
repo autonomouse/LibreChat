@@ -205,6 +205,9 @@ export interface MessagesHost {
   useScreenshotTarget: () => RefObject<HTMLDivElement> | undefined;
   /** Whether the viewer asked the thread to follow new content to the bottom. */
   useAutoScroll: () => boolean;
+  /** Whether a send holds the reader's own message at the top of the viewport while its
+   *  response streams (`interface.streamScroll: anchor`), instead of riding the response down. */
+  useAnchorTurn: () => boolean;
   /** The read-state storage the list marks a conversation seen through. */
   useSeenSource: () => ConversationSeenSource;
   /** The conversation's cached messages, refreshed as they stream when isStreaming is set; undefined until loaded or without a conversation. */
@@ -289,6 +292,7 @@ const fallbackHost: MessagesHost = {
   renderMessageAudio: () => null,
   useScreenshotTarget: () => useRef<HTMLDivElement>(null),
   useAutoScroll: () => false,
+  useAnchorTurn: () => false,
   useSeenSource: () => inertSeenSource,
   useConversationMessages: () => undefined,
   useAssistant: () => undefined,

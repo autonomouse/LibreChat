@@ -23,6 +23,7 @@ export const testMessagesHost: MessagesHost = {
   renderMessageAudio: () => null,
   useScreenshotTarget: () => undefined,
   useAutoScroll: () => false,
+  useAnchorTurn: () => false,
   useConversationMessages: () => undefined,
   useAssistant: () => undefined,
   useGetAddedConvo: () => () => null,

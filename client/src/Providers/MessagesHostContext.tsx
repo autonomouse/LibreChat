@@ -25,9 +25,9 @@ import {
   getMessageClipboardSource,
   useCopyMessageToClipboard,
 } from '~/hooks';
+import { useForkConvoMutation, useCachedMessages, useGetStartupConfig } from '~/data-provider';
 import { useHideSelectedAuthor } from '~/components/Chat/Menus/Endpoints/shown';
 import MessageContent from '~/components/Chat/Messages/Content/MessageContent';
-import { useForkConvoMutation, useCachedMessages } from '~/data-provider';
 import useConversationSeenSource from '~/hooks/Conversations/seenSource';
 import useGetAddedConvo from '~/hooks/Conversations/useGetAddedConvo';
 import { useOptionalMessagesOperations } from './MessagesViewContext';
@@ -42,6 +42,7 @@ import { useScreenshot } from '~/hooks/ScreenshotContext';
 import { useAgentsMapContext } from './AgentsMapContext';
 import useClockFormat from '~/hooks/useClockFormat';
 import { autoScrollAtom } from '~/store/autoScroll';
+import { anchorsSentTurn } from '~/utils/messages';
 import store from '~/store';
 
 function useAppForkPreferences(): ForkPreferences {
@@ -153,6 +154,7 @@ export const appMessagesHost: MessagesHost = {
   renderMessageAudio: (props) => <AppMessageAudio {...props} />,
   useScreenshotTarget: () => useScreenshot().screenshotTargetRef,
   useAutoScroll: () => useAtomValue(autoScrollAtom),
+  useAnchorTurn: () => anchorsSentTurn(useGetStartupConfig().data),
   useSeenSource: useConversationSeenSource,
   renderMessageIcon: (props) => <MessageIcon {...props} />,
   useMaximizeChatSpace: () => useRecoilValue(store.maximizeChatSpace),

@@ -214,6 +214,12 @@ interface:
   # 'whenDifferent' drops them when the header's model selector already shows that agent; a
   # response from another agent keeps them. The name stays available to screen readers.
   # messageAuthor: always
+  # Where the thread rests while a response streams (default: follow).
+  # 'follow' rides the newest line. 'anchor' puts the message just sent at the top of the
+  # viewport and holds it there: the response, and anything that opens inside it, fills in
+  # below without moving the view, until the reader scrolls or uses the scroll-to-bottom button.
+  # Opening a saved conversation still follows each user's own auto-scroll setting.
+  # streamScroll: follow
   # Allow renaming a running chat or one with a placeholder title (default: true).
   # Set to false during a rolling upgrade, until ALL API replicas are upgraded and old
   # title-generation jobs have drained. While false, rename is disabled for running chats

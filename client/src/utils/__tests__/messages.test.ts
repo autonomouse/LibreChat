@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { Constants, QueryKeys } from 'librechat-data-provider';
-import type { TMessage, TConversation } from 'librechat-data-provider';
+import type { TMessage, TConversation, TStartupConfig } from 'librechat-data-provider';
 import type { TEndpointsConfig } from 'librechat-data-provider';
 import type { LocalizeFunction } from '~/common';
 import {
@@ -11,6 +11,7 @@ import {
   getHeaderPrefixForScreenReader,
   isSubmittableMessage,
   createDualMessageContent,
+  anchorsSentTurn,
 } from '../messages';
 
 const translations: Record<string, string> = {
@@ -295,5 +296,21 @@ describe('createDualMessageContent', () => {
       asConvo({ endpoint: 'agents', agent_id: 'agent_abc123' }),
     );
     expect(agentIds(parts)).toEqual(['agent_abc123', 'agent_abc123____1']);
+  });
+});
+
+describe('anchorsSentTurn', () => {
+  const withStreamScroll = (streamScroll?: 'follow' | 'anchor') =>
+    ({ interface: { streamScroll } }) as TStartupConfig;
+
+  it('is on only when the deployment anchors the stream', () => {
+    expect(anchorsSentTurn(withStreamScroll('anchor'))).toBe(true);
+    expect(anchorsSentTurn(withStreamScroll('follow'))).toBe(false);
+  });
+
+  it('follows the stream until the config says otherwise', () => {
+    expect(anchorsSentTurn(withStreamScroll())).toBe(false);
+    expect(anchorsSentTurn({} as TStartupConfig)).toBe(false);
+    expect(anchorsSentTurn(undefined)).toBe(false);
   });
 });
